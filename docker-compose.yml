@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  nestjs:
+    build: .
+    ports:
+      - "3000:3000"
+  prometheus:
+    image: prom/prometheus:v2.36.2
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker-compose/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    # - prometheus-data:/prometheus # TODO
+    command: --config.file=/etc/prometheus/prometheus.yml

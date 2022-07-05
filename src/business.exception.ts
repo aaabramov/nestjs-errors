@@ -1,6 +1,11 @@
 import { HttpStatus } from '@nestjs/common';
+import { ApiError } from './exception.filter';
 
-export type ErrorDomain = 'users' | 'orders' | 'generic';
+export enum ErrorDomain {
+  Users = 'users',
+  Orders = 'orders',
+  Generic = 'generic',
+}
 
 export class BusinessException extends Error {
   public readonly id: string;
@@ -15,6 +20,15 @@ export class BusinessException extends Error {
     super(message);
     this.id = BusinessException.genId();
     this.timestamp = new Date();
+  }
+
+  public toApiError(): ApiError {
+    return {
+      id: this.id,
+      domain: this.domain,
+      message: this.apiMessage,
+      timestamp: this.timestamp,
+    };
   }
 
   // See: https://stackoverflow.com/a/44678459/5091346

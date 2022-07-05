@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { BusinessException, ErrorDomain } from './business.exception';
+import { InjectMetric } from '@willsoto/nestjs-prometheus';
+import { Counter } from 'prom-client';
 
 export interface ApiError {
   id: string;
@@ -20,24 +22,23 @@ export interface ApiError {
 export class CustomExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(CustomExceptionFilter.name);
 
+  constructor(
+    @InjectMetric('nestjs_errors') private readonly counter: Counter<string>,
+  ) {}
+
   catch(exception: Error, host: ArgumentsHost) {
-    let body: ApiError;
+    let error: BusinessException;
     let status: HttpStatus;
 
     if (exception instanceof BusinessException) {
       // Straightforward handling of our own exceptions
-      body = {
-        id: exception.id,
-        message: exception.apiMessage,
-        domain: exception.domain,
-        timestamp: exception.timestamp,
-      };
+      error = exception;
       status = exception.status;
     } else if (exception instanceof HttpException) {
       // We can extract internal message & status from NestJS errors
       // Useful with class-validator
-      body = new BusinessException(
-        'generic',
+      error = new BusinessException(
+        ErrorDomain.Generic,
         exception.message,
         exception.message,
         exception.getStatus(),
@@ -45,14 +46,16 @@ export class CustomExceptionFilter implements ExceptionFilter {
       status = exception.getStatus();
     } else {
       // For all other exception simply return 500 error
-      body = new BusinessException(
-        'generic',
+      error = new BusinessException(
+        ErrorDomain.Generic,
         `Internal error occurred: ${exception.message}`,
         'Internal error occurred',
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
       status = HttpStatus.INTERNAL_SERVER_ERROR;
     }
+
+    this.counter.labels(error.domain, error.status.toString()).inc();
 
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -63,10 +66,12 @@ export class CustomExceptionFilter implements ExceptionFilter {
     this.logger.error(
       `Got an exception: ${JSON.stringify({
         path: request.url,
-        ...body,
-      })}. Exception: ${JSON.stringify(exception)}`,
+        ...error,
+      })}`,
     );
 
-    response.status(status).json(body);
+    console.log(HttpStatus[status]);
+
+    response.status(status).json(error.toApiError());
   }
 }
